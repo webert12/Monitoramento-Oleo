@@ -119,13 +119,12 @@ with aba_Cadastro:
         with col_placa:
             placa = st.text_input("Placa do Veículo", placeholder="ABC1D23").upper().strip()
             
-        col_km_atual, col_km_troca, col_km_prox = st.columns(3)
+        # Alterado para 2 colunas, removendo a entrada manual da próxima troca
+        col_km_atual, col_km_troca = st.columns(2)
         with col_km_atual:
             km_atual = st.number_input("Quilometragem Atual", min_value=0, step=1)
         with col_km_troca:
             km_ultima_troca = st.number_input("KM da Última Troca", min_value=0, step=1)
-        with col_km_prox:
-            km_proxima_troca = st.number_input("KM da Próxima Troca", min_value=0, step=1)
             
         botao_cadastrar = st.form_submit_button("Salvar Veículo")
         
@@ -145,6 +144,9 @@ with aba_Cadastro:
                     elif tipo == "Caminhão" and qtd_caminhoes >= 2:
                         st.error(f"Erro: {responsavel} já possui 2 Caminhões cadastrados. Limite atingido!")
                     else:
+                        # Cálculo automático da próxima troca somando 5.000 KM
+                        km_proxima_troca = km_ultima_troca + 5000
+                        
                         # Novo registro
                         novo_veiculo = {
                             "Tipo": tipo,
@@ -160,7 +162,7 @@ with aba_Cadastro:
                         df_frota = pd.concat([df_frota, pd.DataFrame([novo_veiculo])], ignore_index=True)
                         st.session_state.df_frota = df_frota
                         salvar_dados(df_frota)
-                        st.success(f"Veículo {modelo} [{placa}] cadastrado com sucesso para {responsavel}!")
+                        st.success(f"Veículo {modelo} [{placa}] cadastrado com sucesso para {responsavel}! Próxima troca projetada para {km_proxima_troca} KM.")
                         st.rerun()
             else:
                 st.warning("Por favor, preencha o Modelo e a Placa.")
