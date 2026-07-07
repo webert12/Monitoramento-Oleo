@@ -144,7 +144,7 @@ with aba_Atualizar:
         lista_veiculos = df_frota["Placa"].tolist()
         placa_selecionada = st.selectbox("Selecione a Placa do Veículo", lista_veiculos)
         
-        # Puxa os dados atuais do veículo selecionado
+        # Puxa os dados antigos/atuais do veículo selecionado
         dados_veiculo = df_frota[df_frota["Placa"] == placa_selecionada].iloc[0]
         
         st.markdown(f"**Veículo Selecionado:** {dados_veiculo['Tipo']} - {dados_veiculo['Modelo']}")
@@ -153,10 +153,12 @@ with aba_Atualizar:
         
         with st.form("form_atualizar"):
             if opcao_atualizacao == "Registrar Nova Troca de Óleo":
-                st.info("Insso atualizará a KM atual, a KM da última troca e calculará automaticamente mais 5.000 KM para a próxima troca.")
-                km_troca_feita = st.number_input("KM em que a troca foi feita", min_value=int(dados_veiculo["Última Troca (KM)"]), step=1)
+                st.info("Isso atualizará a KM atual, a KM da última troca e calculará automaticamente mais 5.000 KM para a próxima troca.")
                 
-                # Próxima troca calculada de forma automatizada (5.000 km adicionais)
+                # O valor inicial agora puxa o KM Atual cadastrado para facilitar o clique direto
+                km_troca_feita = st.number_input("KM em que a troca foi feita", value=int(dados_veiculo["KM Atual"]), min_value=0, step=1)
+                
+                # Próxima troca calculada automaticamente (Soma 5.000 KM ao valor inserido)
                 proxima_troca_nova = km_troca_feita + 5000
                 
                 if st.form_submit_button("Confirmar Nova Troca"):
@@ -166,7 +168,7 @@ with aba_Atualizar:
                     
                     st.session_state.df_frota = df_frota
                     salvar_dados(df_frota)
-                    st.success(f"Troca de óleo registrada com sucesso! Próxima troca definida para: {proxima_troca_nova} KM.")
+                    st.success(f"Troca de óleo registrada com sucesso! KM Atualizado e Próxima troca definida para: {proxima_troca_nova} KM.")
                     st.rerun()
 
             elif opcao_atualizacao == "Corrigir/Editar Dados do Veículo (Se errou algo)":
