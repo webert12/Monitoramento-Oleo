@@ -100,41 +100,32 @@ with aba_Cadastro:
     st.header("Adicionar Novo Veículo à Frota")
     
     with st.form("form_cadastro", clear_on_submit=True):
-        col_tipo, col_mod, col_placa = st.columns(3)
+        col_placa, col_km_atual, col_km_troca = st.columns(3)
         
-        with col_tipo:
-            tipo = st.selectbox("Tipo de Veículo", ["Carro", "Caminhão"])
-        with col_mod:
-            modelo = st.text_input("Modelo do Veículo (ex: Fiat Uno, 17180)", placeholder="Ex: Caminhão 17180")
         with col_placa:
             placa = st.text_input("Placa do Veículo", placeholder="ABC1D23").upper().strip()
-            
-        col_responsavel, col_vazio1, col_vazio2 = st.columns(3)
-        with col_responsavel:
-            responsavel = st.selectbox("Responsável pelo Veículo", RESPONSAVEIS_LISTA)
-            
-        col_km_atual, col_km_troca, col_km_prox = st.columns(3)
         with col_km_atual:
             km_atual = st.number_input("Quilometragem Atual", min_value=0, step=1)
         with col_km_troca:
             km_ultima_troca = st.number_input("KM da Última Troca", min_value=0, step=1)
-        with col_km_prox:
-            km_proxima_troca = st.number_input("KM da Próxima Troca", min_value=0, step=1)
             
         botao_cadastrar = st.form_submit_button("Salvar Veículo")
         
         if botao_cadastrar:
-            if modelo and placa:
+            if placa:
                 # Verificar se a placa já existe
                 if placa in df_frota["Placa"].values:
                     st.error(f"Erro: A placa {placa} já está cadastrada!")
                 else:
-                    # Novo registro
+                    # Calcular automaticamente a próxima troca somando 5000 km à última troca
+                    km_proxima_troca = km_ultima_troca + 5000
+                    
+                    # Novo registro (campos não solicitados no cadastro assumem valores padrão)
                     novo_veiculo = {
-                        "Tipo": tipo,
-                        "Modelo": modelo,
+                        "Tipo": "Não Definido",
+                        "Modelo": "Não Informado",
                         "Placa": placa,
-                        "Responsável": responsavel,
+                        "Responsável": "Não Definido",
                         "KM Atual": km_atual,
                         "Última Troca (KM)": km_ultima_troca,
                         "Próxima Troca (KM)": km_proxima_troca,
@@ -144,10 +135,10 @@ with aba_Cadastro:
                     df_frota = pd.concat([df_frota, pd.DataFrame([novo_veiculo])], ignore_index=True)
                     st.session_state.df_frota = df_frota
                     salvar_dados(df_frota)
-                    st.success(f"Veículo {modelo} [{placa}] cadastrado com sucesso para o responsável {responsavel}!")
+                    st.success(f"Veículo [{placa}] cadastrado com sucesso! Próxima troca calculada para {km_proxima_troca} KM.")
                     st.rerun()
             else:
-                st.warning("Por favor, preencha o Modelo e a Placa.")
+                st.warning("Por favor, preencha a Placa do Veículo.")
 
 # --- ABA 3: ATUALIZAR KM / TROCA ---
 with aba_Atualizar:
