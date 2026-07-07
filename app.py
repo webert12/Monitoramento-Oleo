@@ -153,22 +153,24 @@ with aba_Atualizar:
         
         with st.form("form_atualizar"):
             if opcao_atualizacao == "Registrar Nova Troca de Óleo":
-                st.info("Isso atualizará a KM atual, a KM da última troca e calculará automaticamente mais 5.000 KM para a próxima troca.")
+                st.info("Ao confirmar, o sistema atualizará o KM Atual somando 5.000 KM automaticamente e agendará a próxima troca.")
                 
-                # O valor inicial agora puxa o KM Atual cadastrado para facilitar o clique direto
-                km_troca_feita = st.number_input("KM em que a troca foi feita", value=int(dados_veiculo["KM Atual"]), min_value=0, step=1)
+                # Exibe o KM que servirá de base (o KM Atual antigo)
+                km_base_troca = st.number_input("KM base para realizar a troca", value=int(dados_veiculo["KM Atual"]), min_value=0, step=1)
                 
-                # Próxima troca calculada automaticamente (Soma 5.000 KM ao valor inserido)
-                proxima_troca_nova = km_troca_feita + 5000
+                # Avança o KM Atual em 5.000 KM (ex: 170.478 vira 175.478)
+                novo_km_atual = km_base_troca + 5000
+                # Calcula a próxima troca adicionando mais 5.000 KM (ex: vira 180.478)
+                proxima_troca_nova = novo_km_atual + 5000
                 
                 if st.form_submit_button("Confirmar Nova Troca"):
-                    df_frota.loc[df_frota["Placa"] == placa_selecionada, "KM Atual"] = km_troca_feita
-                    df_frota.loc[df_frota["Placa"] == placa_selecionada, "Última Troca (KM)"] = km_troca_feita
+                    df_frota.loc[df_frota["Placa"] == placa_selecionada, "KM Atual"] = novo_km_atual
+                    df_frota.loc[df_frota["Placa"] == placa_selecionada, "Última Troca (KM)"] = novo_km_atual
                     df_frota.loc[df_frota["Placa"] == placa_selecionada, "Próxima Troca (KM)"] = proxima_troca_nova
                     
                     st.session_state.df_frota = df_frota
                     salvar_dados(df_frota)
-                    st.success(f"Troca de óleo registrada com sucesso! KM Atualizado e Próxima troca definida para: {proxima_troca_nova} KM.")
+                    st.success(f"Troca de óleo realizada! O veículo mudou para o KM Atual: {novo_km_atual} KM. Próxima troca agendada para: {proxima_troca_nova} KM.")
                     st.rerun()
 
             elif opcao_atualizacao == "Corrigir/Editar Dados do Veículo (Se errou algo)":
