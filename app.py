@@ -9,21 +9,14 @@ st.set_page_config(page_title="Controle de Troca de Óleo", page_icon="🛢️",
 # Nome do arquivo de banco de dados local
 DB_FILE = "frota_oleo.csv"
 
-# Lista padrão de responsáveis
-RESPONSAVEIS_LISTA = ["Ednaldo", "Rafael", "Luiz Felipe", "Cardoso", "Guilherme", "Paulo", "Everaldo"]
-
 # Função para carregar ou criar o banco de dados
 def carregar_dados():
     if os.path.exists(DB_FILE):
-        df = pd.read_csv(DB_FILE)
-        # Garantir que a coluna Responsável exista em arquivos antigos
-        if "Responsável" not in df.columns:
-            df["Responsável"] = "Não Definido"
-        return df
+        return pd.read_csv(DB_FILE)
     else:
         # Cria um DataFrame vazio com as colunas necessárias se o arquivo não existir
         columns = [
-            "Tipo", "Modelo", "Placa", "Responsável", "KM Atual", 
+            "Tipo", "Modelo", "Placa", "KM Atual", 
             "Última Troca (KM)", "Próxima Troca (KM)", "Status"
         ]
         return pd.DataFrame(columns=columns)
@@ -75,10 +68,10 @@ with aba_Painel:
 
         st.markdown("---")
         
-        # Lupa de pesquisa por placa/responsável e filtro de tipo lado a lado
+        # Lupa de pesquisa por placa e filtro de tipo lado a lado
         col_pesquisa, col_filtro = st.columns([2, 1])
         with col_pesquisa:
-            pesquisa_termo = st.text_input("🔍 Pesquisar por Placa ou Nome do Responsável", placeholder="Digite a placa ou o nome do funcionário...").strip()
+            pesquisa_placa = st.text_input("🔍 Pesquisar por Placa", placeholder="Digite a placa do veículo...").upper().strip()
         with col_filtro:
             filtro_tipo = st.selectbox("Filtrar por Tipo", ["Todos", "Carro", "Caminhão"])
         
@@ -86,12 +79,8 @@ with aba_Painel:
         df_filtrado = df_frota.copy()
         if filtro_tipo != "Todos":
             df_filtrado = df_filtrado[df_filtrado["Tipo"] == filtro_tipo]
-        if pesquisa_termo:
-            # Filtra se o termo estiver contido na Placa OU no nome do Responsável (sem diferenciar maiúsculas/minúsculas)
-            df_filtrado = df_filtrado[
-                df_filtrado["Placa"].str.contains(pesquisa_termo.upper(), na=False) | 
-                df_filtrado["Responsável"].str.contains(pesquisa_termo, case=False, na=False)
-            ]
+        if pesquisa_placa:
+            df_filtrado = df_filtrado[df_filtrado["Placa"].str.contains(pesquisa_placa, na=False)]
             
         st.dataframe(df_filtrado, use_container_width=True)
 
@@ -100,32 +89,36 @@ with aba_Cadastro:
     st.header("Adicionar Novo Veículo à Frota")
     
     with st.form("form_cadastro", clear_on_submit=True):
-        col_placa, col_km_atual, col_km_troca = st.columns(3)
+        col_tipo, col_mod, col_placa = st.columns(3)
         
+        with col_tipo:
+            tipo = st.selectbox("Tipo de Veículo", ["Carro", "Caminhão"])
+        with col_mod:
+            modelo = st.text_input("Modelo do Veículo (ex: Fiat Uno, 17180)", placeholder="Ex: Caminhão 17180")
         with col_placa:
             placa = st.text_input("Placa do Veículo", placeholder="ABC1D23").upper().strip()
+            
+        col_km_atual, col_km_troca, col_km_prox = st.columns(3)
         with col_km_atual:
             km_atual = st.number_input("Quilometragem Atual", min_value=0, step=1)
         with col_km_troca:
             km_ultima_troca = st.number_input("KM da Última Troca", min_value=0, step=1)
+        with col_km_prox:
+            km_proxima_troca = st.number_input("KM da Próxima Troca", min_value=0, step=1)
             
         botao_cadastrar = st.form_submit_button("Salvar Veículo")
         
         if botao_cadastrar:
-            if placa:
+            if modelo and placa:
                 # Verificar se a placa já existe
                 if placa in df_frota["Placa"].values:
                     st.error(f"Erro: A placa {placa} já está cadastrada!")
                 else:
-                    # Calcular automaticamente a próxima troca somando 5000 km à última troca
-                    km_proxima_troca = km_ultima_troca + 5000
-                    
-                    # Novo registro (campos não solicitados no cadastro assumem valores padrão)
+                    # Novo registro
                     novo_veiculo = {
-                        "Tipo": "Não Definido",
-                        "Modelo": "Não Informado",
+                        "Tipo": tipo,
+                        "Modelo": modelo,
                         "Placa": placa,
-                        "Responsável": "Não Definido",
                         "KM Atual": km_atual,
                         "Última Troca (KM)": km_ultima_troca,
                         "Próxima Troca (KM)": km_proxima_troca,
@@ -135,10 +128,10 @@ with aba_Cadastro:
                     df_frota = pd.concat([df_frota, pd.DataFrame([novo_veiculo])], ignore_index=True)
                     st.session_state.df_frota = df_frota
                     salvar_dados(df_frota)
-                    st.success(f"Veículo [{placa}] cadastrado com sucesso! Próxima troca calculada para {km_proxima_troca} KM.")
+                    st.success(f"Veículo {modelo} [{placa}] cadastrado com sucesso!")
                     st.rerun()
             else:
-                st.warning("Por favor, preencha a Placa do Veículo.")
+                st.warning("Por favor, preencha o Modelo e a Placa.")
 
 # --- ABA 3: ATUALIZAR KM / TROCA ---
 with aba_Atualizar:
@@ -154,7 +147,7 @@ with aba_Atualizar:
         # Puxa os dados antigos/atuais do veículo selecionado
         dados_veiculo = df_frota[df_frota["Placa"] == placa_selecionada].iloc[0]
         
-        st.markdown(f"**Veículo Selecionado:** {dados_veiculo['Tipo']} - {dados_veiculo['Modelo']} | **Responsável:** {dados_veiculo.get('Responsável', 'Não Definido')}")
+        st.markdown(f"**Veículo Selecionado:** {dados_veiculo['Tipo']} - {dados_veiculo['Modelo']}")
         
         opcao_atualizacao = st.radio("O que deseja fazer?", ["Registrar Nova Troca de Óleo", "Corrigir/Editar Dados do Veículo (Se errou algo)"])
         
@@ -187,17 +180,11 @@ with aba_Atualizar:
                 lista_tipos = ["Carro", "Caminhão"]
                 idx_tipo = lista_tipos.index(dados_veiculo["Tipo"]) if dados_veiculo["Tipo"] in lista_tipos else 0
                 
-                # Resgata o índice do responsável atual para o selectbox
-                resp_atual = dados_veiculo.get("Responsável", "Ednaldo")
-                idx_resp = RESPONSAVEIS_LISTA.index(resp_atual) if resp_atual in RESPONSAVEIS_LISTA else 0
-                
-                col_edit_tipo, col_edit_mod, col_edit_resp = st.columns(3)
+                col_edit_tipo, col_edit_mod = st.columns(2)
                 with col_edit_tipo:
                     tipo_editado = st.selectbox("Tipo de Veículo", lista_tipos, index=idx_tipo)
                 with col_edit_mod:
                     modelo_editado = st.text_input("Modelo do Veículo", value=str(dados_veiculo["Modelo"]))
-                with col_edit_resp:
-                    responsavel_editado = st.selectbox("Responsável pelo Veículo", RESPONSAVEIS_LISTA, index=idx_resp)
                     
                 col_edit_km, col_edit_ult, col_edit_prox = st.columns(3)
                 with col_edit_km:
@@ -211,7 +198,6 @@ with aba_Atualizar:
                     if modelo_editado:
                         df_frota.loc[df_frota["Placa"] == placa_selecionada, "Tipo"] = tipo_editado
                         df_frota.loc[df_frota["Placa"] == placa_selecionada, "Modelo"] = modelo_editado
-                        df_frota.loc[df_frota["Placa"] == placa_selecionada, "Responsável"] = responsavel_editado
                         df_frota.loc[df_frota["Placa"] == placa_selecionada, "KM Atual"] = km_atual_editada
                         df_frota.loc[df_frota["Placa"] == placa_selecionada, "Última Troca (KM)"] = km_ult_editada
                         df_frota.loc[df_frota["Placa"] == placa_selecionada, "Próxima Troca (KM)"] = km_prox_editada
