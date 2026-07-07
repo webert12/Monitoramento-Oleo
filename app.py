@@ -16,9 +16,11 @@ RESPONSAVEIS = ["Ednaldo", "Rafael", "Luiz Felipe", "Cardoso", "Guilherme", "Pau
 def carregar_dados():
     if os.path.exists(DB_FILE):
         df = pd.read_csv(DB_FILE)
-        # Garantir que a coluna Responsável exista para não quebrar cadastros antigos
+        # Garantir que as colunas necessárias existam para não quebrar cadastros antigos
         if "Responsável" not in df.columns:
             df.insert(3, "Responsável", "Não Definido")
+        if "Modelo" not in df.columns:
+            df.insert(1, "Modelo", "Não Informado")
         return df
     else:
         # Cria um DataFrame vazio com as colunas necessárias se o arquivo não existir
@@ -106,25 +108,29 @@ with aba_Cadastro:
     st.header("Adicionar Novo Veículo à Frota")
     
     with st.form("form_cadastro", clear_on_submit=True):
-        col_resp, col_tipo, col_placa = st.columns(3)
+        col_resp, col_tipo, col_mod, col_placa = st.columns(4)
         
         with col_resp:
             responsavel = st.selectbox("Responsável", RESPONSAVEIS)
         with col_tipo:
             tipo = st.selectbox("Tipo de Veículo", ["Carro", "Caminhão"])
+        with col_mod:
+            modelo = st.text_input("Modelo do Veículo (ex: Fiat Uno, 17180)", placeholder="Ex: Caminhão 17180")
         with col_placa:
             placa = st.text_input("Placa do Veículo", placeholder="ABC1D23").upper().strip()
             
-        col_km_atual, col_km_troca = st.columns(2)
+        col_km_atual, col_km_troca, col_km_prox = st.columns(3)
         with col_km_atual:
             km_atual = st.number_input("Quilometragem Atual", min_value=0, step=1)
         with col_km_troca:
             km_ultima_troca = st.number_input("KM da Última Troca", min_value=0, step=1)
+        with col_km_prox:
+            km_proxima_troca = st.number_input("KM da Próxima Troca", min_value=0, step=1)
             
         botao_cadastrar = st.form_submit_button("Salvar Veículo")
         
         if botao_cadastrar:
-            if placa:
+            if modelo and placa:
                 # Verificar se a placa já existe
                 if placa in df_frota["Placa"].values:
                     st.error(f"Erro: A placa {placa} já está cadastrada!")
@@ -139,13 +145,10 @@ with aba_Cadastro:
                     elif tipo == "Caminhão" and qtd_caminhoes >= 2:
                         st.error(f"Erro: {responsavel} já possui 2 Caminhões cadastrados. Limite atingido!")
                     else:
-                        # Calcula a próxima troca automaticamente
-                        km_proxima_troca = km_ultima_troca + 5000
-                        
                         # Novo registro
                         novo_veiculo = {
                             "Tipo": tipo,
-                            "Modelo": "Não Informado", # Modelo oculto do cadastro
+                            "Modelo": modelo,
                             "Placa": placa,
                             "Responsável": responsavel,
                             "KM Atual": km_atual,
@@ -157,10 +160,10 @@ with aba_Cadastro:
                         df_frota = pd.concat([df_frota, pd.DataFrame([novo_veiculo])], ignore_index=True)
                         st.session_state.df_frota = df_frota
                         salvar_dados(df_frota)
-                        st.success(f"Veículo [{placa}] cadastrado com sucesso para {responsavel}! Próxima troca gerada automaticamente para {km_proxima_troca} KM.")
+                        st.success(f"Veículo {modelo} [{placa}] cadastrado com sucesso para {responsavel}!")
                         st.rerun()
             else:
-                st.warning("Por favor, preencha a Placa do Veículo.")
+                st.warning("Por favor, preencha o Modelo e a Placa.")
 
 # --- ABA 3: ATUALIZAR KM / TROCA ---
 with aba_Atualizar:
@@ -176,12 +179,12 @@ with aba_Atualizar:
         # Puxa os dados antigos/atuais do veículo selecionado
         dados_veiculo = df_frota[df_frota["Placa"] == placa_selecionada].iloc[0]
         
-        st.markdown(f"**Veículo Selecionado:** {dados_veiculo['Tipo']} [{placa_selecionada}] | **Responsável:** {dados_veiculo.get('Responsável', 'Não Definido')}")
+        st.markdown(f"**Veículo Selecionado:** {dados_veiculo['Tipo']} - {dados_veiculo['Modelo']} [{placa_selecionada}] | **Responsável:** {dados_veiculo.get('Responsável', 'Não Definido')}")
         
-        opcao_atualizacao = st.radio("O que deseja fazer?", ["Registrar Nova Troca de Óleo", "Corrigir/Editar Dados do Veículo (Se errou algo)"])
+        opcao_atualizacao = st.radio("O que deseja fazer?", ["Atualizar com Nova Troca de Óleo", "Corrigir/Editar Dados do Veículo (Se errou algo)"])
         
         with st.form("form_atualizar"):
-            if opcao_atualizacao == "Registrar Nova Troca de Óleo":
+            if opcao_atualizacao == "Atualizar com Nova Troca de Óleo":
                 st.info("Ao confirmar, o sistema atualizará o KM Atual e agendará a próxima troca automaticamente (+ 5.000 KM).")
                 
                 # Exibe o KM que servirá de base
@@ -211,9 +214,11 @@ with aba_Atualizar:
                 resp_atual = dados_veiculo.get("Responsável", "Ednaldo")
                 idx_resp = RESPONSAVEIS.index(resp_atual) if resp_atual in RESPONSAVEIS else 0
                 
-                col_edit_tipo, col_edit_resp = st.columns(2)
+                col_edit_tipo, col_edit_mod, col_edit_resp = st.columns(3)
                 with col_edit_tipo:
                     tipo_editado = st.selectbox("Tipo de Veículo", lista_tipos, index=idx_tipo)
+                with col_edit_mod:
+                    modelo_editado = st.text_input("Modelo do Veículo", value=str(dados_veiculo.get("Modelo", "Não Informado")))
                 with col_edit_resp:
                     responsavel_editado = st.selectbox("Responsável", RESPONSAVEIS, index=idx_resp)
                     
@@ -226,13 +231,17 @@ with aba_Atualizar:
                     km_prox_editada = st.number_input("Próxima Troca (KM)", value=int(dados_veiculo["Próxima Troca (KM)"]), min_value=0, step=1)
                 
                 if st.form_submit_button("Salvar Alterações Corrigidas"):
-                    df_frota.loc[df_frota["Placa"] == placa_selecionada, "Tipo"] = tipo_editado
-                    df_frota.loc[df_frota["Placa"] == placa_selecionada, "Responsável"] = responsavel_editado
-                    df_frota.loc[df_frota["Placa"] == placa_selecionada, "KM Atual"] = km_atual_editada
-                    df_frota.loc[df_frota["Placa"] == placa_selecionada, "Última Troca (KM)"] = km_ult_editada
-                    df_frota.loc[df_frota["Placa"] == placa_selecionada, "Próxima Troca (KM)"] = km_prox_editada
-                    
-                    st.session_state.df_frota = df_frota
-                    salvar_dados(df_frota)
-                    st.success("Dados do veículo corrigidos e salvos!")
-                    st.rerun()
+                    if modelo_editado:
+                        df_frota.loc[df_frota["Placa"] == placa_selecionada, "Tipo"] = tipo_editado
+                        df_frota.loc[df_frota["Placa"] == placa_selecionada, "Modelo"] = modelo_editado
+                        df_frota.loc[df_frota["Placa"] == placa_selecionada, "Responsável"] = responsavel_editado
+                        df_frota.loc[df_frota["Placa"] == placa_selecionada, "KM Atual"] = km_atual_editada
+                        df_frota.loc[df_frota["Placa"] == placa_selecionada, "Última Troca (KM)"] = km_ult_editada
+                        df_frota.loc[df_frota["Placa"] == placa_selecionada, "Próxima Troca (KM)"] = km_prox_editada
+                        
+                        st.session_state.df_frota = df_frota
+                        salvar_dados(df_frota)
+                        st.success("Dados do veículo corrigidos e salvos!")
+                        st.rerun()
+                    else:
+                        st.error("O modelo do veículo não pode ficar em branco.")
