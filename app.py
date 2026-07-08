@@ -119,10 +119,14 @@ with aba_Cadastro:
             st.markdown("### Dados Cadastrais do Veículo")
             col_resp, col_tipo, col_mod, col_placa = st.columns(4)
             
-            responsavel = col_resp.selectbox("Responsável Técnico", RESPONSAVEIS)
+            responsavel_sel = col_resp.selectbox("Responsável Técnico", RESPONSAVEIS)
             tipo = col_tipo.selectbox("Tipo de Veículo", ["Carro", "Caminhão"])
             modelo = col_mod.text_input("Modelo do Veículo", placeholder="Ex: Caminhão 17180")
             placa = col_placa.text_input("Placa do Veículo (Mercosul/Antiga)", placeholder="ABC1D23").upper().strip()
+            
+            # Campo para permitir digitar um novo funcionário diretamente no cadastro
+            novo_func = st.text_input("Ou digite o nome de um Novo Funcionário", placeholder="Caso não esteja na lista de responsáveis acima...").strip()
+            responsavel = novo_func if novo_func else responsavel_sel
                 
             st.markdown("### Controle de Rodagem (Quilometragem)")
             col_km_a, col_km_t = st.columns(2)
@@ -221,8 +225,17 @@ with aba_Atualizar:
                         
                         col_e1, col_e2, col_e3 = st.columns(3)
                         new_mod = col_e1.text_input("Corrigir Nome/Modelo", value=dados["Modelo"])
-                        new_resp = col_e2.selectbox("Alterar Responsável", RESPONSAVEIS, index=RESPONSAVEIS.index(dados["Responsável"]))
+                        
+                        # Trava de segurança para identificar se o responsável atual veio de um nome digitado manualmente
+                        resp_atual = dados["Responsável"]
+                        idx_resp = RESPONSAVEIS.index(resp_atual) if resp_atual in RESPONSAVEIS else 0
+                        new_resp_sel = col_e2.selectbox("Alterar Responsável (Lista)", RESPONSAVEIS, index=idx_resp)
+                        
                         new_km = col_e3.number_input("Ajustar KM Atual do Painel", value=int(dados["KM Atual"]), min_value=0, step=1)
+                        
+                        # Permite corrigir o nome para qualquer valor digitado ou inserir um novo funcionário diretamente
+                        new_resp_txt = st.text_input("Ou digite um Novo Funcionário / Ajuste o Nome Manualmente", value=resp_atual if resp_atual not in RESPONSAVEIS else "", placeholder="Deixe em branco para manter a seleção da lista acima...").strip()
+                        new_resp = new_resp_txt if new_resp_txt else new_resp_sel
                         
                         st.markdown("<br>", unsafe_allow_html=True)
                         if st.form_submit_button("💾 Gravar Correções", use_container_width=True):
