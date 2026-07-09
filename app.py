@@ -1,14 +1,24 @@
 import streamlit as st
 import pandas as pd
+import os
 from datetime import datetime
-from supabase import create_client, Client  # Biblioteca oficial do Supabase
+from supabase import create_client, Client
 
 # Configuração da página
 st.set_page_config(page_title="Controle de Troca de Óleo", page_icon="🛢️", layout="wide")
 
-# Inicializa o cliente do Supabase utilizando os Secrets seguros do Streamlit
-SUPABASE_URL = st.secrets["SUPABASE_URL"]
-SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
+# --- CONFIGURAÇÃO DE SEGURANÇA DO SUPABASE ---
+# Tenta carregar as chaves de forma segura (via Streamlit Secrets)
+# Se não encontrar, usa as chaves manuais (Plano B temporário)
+try:
+    SUPABASE_URL = st.secrets["SUPABASE_URL"]
+    SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
+except (FileNotFoundError, KeyError):
+    st.warning("⚠️ Aviso: Usando chaves de API fixas no código. Para maior segurança, configure os 'Secrets' no painel do Streamlit Cloud.")
+    SUPABASE_URL = "https://dlxwecpddabduuhhlamt.supabase.co"
+    SUPABASE_KEY = "sb_secret_cHpj8ZMV7PhGqML16lMTgg_9G2knOF_"
+
+# Inicializa o cliente do Supabase
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # Lista de Responsáveis (Turmas)
@@ -21,14 +31,12 @@ def carregar_dados():
         df = pd.DataFrame(response.data)
         
         if df.empty:
-            # Estrutura padrão caso a tabela ainda não possua registros
             columns = [
                 "Tipo", "Modelo", "Placa", "Responsável", "KM Atual", 
                 "Última Troca (KM)", "Próxima Troca (KM)", "Status"
             ]
             return pd.DataFrame(columns=columns)
         
-        # Garante a existência de colunas essenciais caso o schema seja antigo
         if "Responsável" not in df.columns:
             df["Responsável"] = "Não Definido"
         if "Modelo" not in df.columns:
@@ -43,18 +51,16 @@ def carregar_dados():
         ]
         return pd.DataFrame(columns=columns)
 
-# Função para salvar/sincronizar dados no Supabase usando Upsert (Baseado na Placa)
+# Função para salvar/sincronizar dados no Supabase usando Upsert
 def salvar_dados(df):
     try:
-        # Transforma o DataFrame em uma lista de dicionários aceita pelo Supabase
         dados_dict = df.to_dict(orient="records")
         if dados_dict:
-            # O método upsert insere novas placas ou atualiza os dados se a placa já existir
             supabase.table("frota_oleo").upsert(dados_dict).execute()
     except Exception as e:
         st.error(f"Erro ao salvar/sincronizar dados no Supabase: {e}")
 
-# Inicializa os dados na sessão do Streamlit buscando do Banco de Dados Nuvem
+# Inicializa os dados na sessão
 if 'df_frota' not in st.session_state:
     st.session_state.df_frota = carregar_dados()
 
@@ -72,7 +78,7 @@ with st.container():
 
 st.divider()
 
-# Criando abas com visual limpo
+# Criando abas
 aba_Painel, aba_Cadastro, aba_Atualizar = st.tabs(["📊 Painel da Frota", "➕ Cadastrar Veículo", "🔄 Atualizar KM / Troca"])
 
 # --- ABA 1: PAINEL DA FROTA ---
@@ -82,7 +88,6 @@ with aba_Painel:
     if df_frota.empty:
         st.info("Nenhum veículo cadastrado ainda. Vá na aba 'Cadastrar Veículo'.")
     else:
-        # Lógica de definição de Status
         status_list = []
         for idx, row in df_frota.iterrows():
             restante = row["Próxima Troca (KM)"] - row["KM Atual"]
@@ -92,7 +97,6 @@ with aba_Painel:
         df_frota["Status"] = status_list
         salvar_dados(df_frota)
         
-        # Área de Indicadores (Métricas em Cards com Bordas)
         col1, col2, col3 = st.columns(3)
         with col1:
             with st.container(border=True):
@@ -106,16 +110,14 @@ with aba_Painel:
         
         st.divider()
         
-        # Filtros de Busca Avançada
         with st.container(border=True):
             st.markdown("**Filtros de Pesquisa**")
             col_pesquisa, col_filtro = st.columns([3, 1])
             with col_pesquisa:
-                pesquisa_termo = st.text_input("Buscar Veículo", placeholder="Digite a placa por completo ou o nome do responsável...", label_visibility="collapsed").strip()
+                pesquisa_termo = st.text_input("Buscar Veículo", placeholder="Digite a placa ou o nome...", label_visibility="collapsed").strip()
             with col_filtro:
                 filtro_tipo = st.selectbox("Tipo", ["Todos", "Carro", "Caminhão"], label_visibility="collapsed")
         
-        # Filtragem dos dados
         df_filtrado = df_frota.copy()
         if filtro_tipo != "Todos":
             df_filtrado = df_filtrado[df_filtrado["Tipo"] == filtro_tipo]
@@ -128,7 +130,6 @@ with aba_Painel:
             df_filtrado = df_filtrado.head(3)
             st.markdown("**Exibindo registros recentes (use a barra de busca acima para ver toda a frota):**")
             
-        # Tabela Formatada de Alta Visibilidade
         st.dataframe(df_filtrado, use_container_width=True)
 
 # --- ABA 2: CADASTRAR VEÍCULO ---
@@ -145,7 +146,6 @@ with aba_Cadastro:
             modelo = col_mod.text_input("Modelo do Veículo", placeholder="Ex: Caminhão 17180")
             placa = col_placa.text_input("Placa do Veículo (Mercosul/Antiga)", placeholder="ABC1D23").upper().strip()
             
-            # Campo dinâmico para novo funcionário ou seleção manual
             novo_func = st.text_input("Ou digite o nome de um Novo Funcionário", placeholder="Caso não esteja na lista de responsáveis acima...").strip()
             responsavel = novo_func if novo_func else responsavel_sel
                 
@@ -160,9 +160,8 @@ with aba_Cadastro:
             if botao_cadastrar:
                 if modelo and placa:
                     if placa in df_frota["Placa"].values:
-                        st.error(f"❌ Erro de Duplicidade: A placa **{placa}** já se encontra cadastrada no banco de dados!")
+                        st.error(f"❌ Erro de Duplicidade: A placa **{placa}** já está cadastrada no banco de dados!")
                     else:
-                        # Validação de regras de limite por responsável
                         veiculos_do_resp = df_frota[df_frota["Responsável"] == responsavel]
                         qtd_carros = len(veiculos_do_resp[veiculos_do_resp["Tipo"] == "Carro"])
                         qtd_caminhoes = len(veiculos_do_resp[veiculos_do_resp["Tipo"] == "Caminhão"])
@@ -216,7 +215,6 @@ with aba_Atualizar:
                 
                 st.divider()
                 
-                # Operação 1: Troca de Óleo
                 if tipo_acao == "🔄 Registrar Nova Troca de Óleo":
                     with st.form("form_troca"):
                         st.markdown(f"#### Registro de Manutenção Preventiva: **[{placa_selecionada}]**")
@@ -238,24 +236,20 @@ with aba_Atualizar:
                             st.success(f"🎉 Troca computada! KM Atualizado para {novo_km_atual} KM e Próxima Manutenção estendida para {proxima_troca_nova} KM.")
                             st.rerun()
                             
-                # Operação 2: Edição / Correção de dados de forma isolada
                 else:
                     with st.form("form_edicao"):
                         st.markdown(f"#### Retificação de Cadastro: **[{placa_selecionada}]**")
-                        st.warning("Utilize esta seção apenas se tiver digitado alguma informação incorretamente no cadastro inicial do veículo.")
                         
                         col_e1, col_e2, col_e3 = st.columns(3)
                         new_mod = col_e1.text_input("Corrigir Nome/Modelo", value=dados["Modelo"])
                         
-                        # Tratamento para evitar quebra caso o responsável atual não esteja listado nos padrões fixos
                         resp_atual = dados["Responsável"]
                         idx_resp = RESPONSAVEIS.index(resp_atual) if resp_atual in RESPONSAVEIS else 0
                         new_resp_sel = col_e2.selectbox("Alterar Responsável (Lista)", RESPONSAVEIS, index=idx_resp)
                         
                         new_km = col_e3.number_input("Ajustar KM Atual do Painel", value=int(dados["KM Atual"]), min_value=0, step=1)
                         
-                        # Permite modificar e digitar qualquer nome manualmente na edição também
-                        new_resp_txt = st.text_input("Ou digite um Novo Funcionário / Ajuste o Nome Manualmente", value=resp_atual if resp_atual not in RESPONSAVEIS else "", placeholder="Deixe em branco para manter a seleção da lista acima...").strip()
+                        new_resp_txt = st.text_input("Ou digite um Novo Funcionário / Ajuste o Nome Manualmente", value=resp_atual if resp_atual not in RESPONSAVEIS else "", placeholder="Deixe em branco para manter a seleção da lista...").strip()
                         new_resp = new_resp_txt if new_resp_txt else new_resp_sel
                         
                         st.markdown("<br>", unsafe_allow_html=True)
@@ -263,9 +257,9 @@ with aba_Atualizar:
                             df_frota.loc[df_frota["Placa"] == placa_selecionada, ["Responsável", "Modelo", "KM Atual"]] = [new_resp, new_mod, new_km]
                             st.session_state.df_frota = df_frota
                             salvar_dados(df_frota)
-                            st.success("✅ Informações do veículo retificadas e salvas com sucesso no banco de dados!")
+                            st.success("✅ Informações retificadas e salvas no banco de dados!")
                             st.rerun()
             else:
-                st.error(f"❌ Nenhum veículo correspondente localizado para a busca '{termo_at}'. Verifique a grafia.")
+                st.error(f"❌ Nenhum veículo localizado para a busca '{termo_at}'.")
         else:
-            st.info("💡 Pronto para busca: Digite a placa ou o nome do responsável no campo acima e tecle Enter para carregar os controles de manutenção.")
+            st.info("💡 Digite a placa ou o responsável no campo acima e tecle Enter para buscar.")
