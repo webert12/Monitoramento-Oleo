@@ -1,39 +1,60 @@
 import streamlit as st
 import pandas as pd
-import os
 from datetime import datetime
+from supabase import create_client, Client  # Biblioteca oficial do Supabase
 
-# Configuração da página (Tema Escuro/Claro nativo do Streamlit se adapta perfeitamente)
+# Configuração da página
 st.set_page_config(page_title="Controle de Troca de Óleo", page_icon="🛢️", layout="wide")
 
-# Nome do arquivo de banco de dados local
-DB_FILE = "frota_oleo.csv"
+# Inicializa o cliente do Supabase utilizando os Secrets seguros do Streamlit
+SUPABASE_URL = st.secrets["SUPABASE_URL"]
+SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # Lista de Responsáveis (Turmas)
 RESPONSAVEIS = ["Ednaldo", "Rafael", "Luiz Felipe", "Cardoso", "Guilherme", "Paulo", "Everaldo"]
 
-# Função para carregar ou criar o banco de dados
+# Função para carregar os dados diretamente do Supabase
 def carregar_dados():
-    if os.path.exists(DB_FILE):
-        df = pd.read_csv(DB_FILE)
-        # Garantir que as colunas necessárias existam
+    try:
+        response = supabase.table("frota_oleo").select("*").execute()
+        df = pd.DataFrame(response.data)
+        
+        if df.empty:
+            # Estrutura padrão caso a tabela ainda não possua registros
+            columns = [
+                "Tipo", "Modelo", "Placa", "Responsável", "KM Atual", 
+                "Última Troca (KM)", "Próxima Troca (KM)", "Status"
+            ]
+            return pd.DataFrame(columns=columns)
+        
+        # Garante a existência de colunas essenciais caso o schema seja antigo
         if "Responsável" not in df.columns:
-            df.insert(3, "Responsável", "Não Definido")
+            df["Responsável"] = "Não Definido"
         if "Modelo" not in df.columns:
-            df.insert(1, "Modelo", "Não Informado")
+            df["Modelo"] = "Não Informado"
+            
         return df
-    else:
+    except Exception as e:
+        st.error(f"Erro ao conectar e carregar dados do Supabase: {e}")
         columns = [
             "Tipo", "Modelo", "Placa", "Responsável", "KM Atual", 
             "Última Troca (KM)", "Próxima Troca (KM)", "Status"
         ]
         return pd.DataFrame(columns=columns)
 
-# Função para salvar os dados
+# Função para salvar/sincronizar dados no Supabase usando Upsert (Baseado na Placa)
 def salvar_dados(df):
-    df.to_csv(DB_FILE, index=False)
+    try:
+        # Transforma o DataFrame em uma lista de dicionários aceita pelo Supabase
+        dados_dict = df.to_dict(orient="records")
+        if dados_dict:
+            # O método upsert insere novas placas ou atualiza os dados se a placa já existir
+            supabase.table("frota_oleo").upsert(dados_dict).execute()
+    except Exception as e:
+        st.error(f"Erro ao salvar/sincronizar dados no Supabase: {e}")
 
-# Inicializa os dados na sessão do Streamlit
+# Inicializa os dados na sessão do Streamlit buscando do Banco de Dados Nuvem
 if 'df_frota' not in st.session_state:
     st.session_state.df_frota = carregar_dados()
 
@@ -46,8 +67,8 @@ with st.container():
         st.title("🛢️ Sistema de Monitoramento e Controle de Troca de Óleo")
         st.markdown("_Gerenciamento inteligente e controle preventivo de quilometragem da frota empresarial._")
     with col_status:
-        st.caption("Status do Sistema")
-        st.success("Banco de Dados Online")
+        st.caption("Status do Banco de Dados")
+        st.success("Supabase Cloud Conectado")
 
 st.divider()
 
@@ -124,7 +145,7 @@ with aba_Cadastro:
             modelo = col_mod.text_input("Modelo do Veículo", placeholder="Ex: Caminhão 17180")
             placa = col_placa.text_input("Placa do Veículo (Mercosul/Antiga)", placeholder="ABC1D23").upper().strip()
             
-            # Campo para permitir digitar um novo funcionário diretamente no cadastro
+            # Campo dinâmico para novo funcionário ou seleção manual
             novo_func = st.text_input("Ou digite o nome de um Novo Funcionário", placeholder="Caso não esteja na lista de responsáveis acima...").strip()
             responsavel = novo_func if novo_func else responsavel_sel
                 
@@ -226,14 +247,14 @@ with aba_Atualizar:
                         col_e1, col_e2, col_e3 = st.columns(3)
                         new_mod = col_e1.text_input("Corrigir Nome/Modelo", value=dados["Modelo"])
                         
-                        # Trava de segurança para identificar se o responsável atual veio de um nome digitado manualmente
+                        # Tratamento para evitar quebra caso o responsável atual não esteja listado nos padrões fixos
                         resp_atual = dados["Responsável"]
                         idx_resp = RESPONSAVEIS.index(resp_atual) if resp_atual in RESPONSAVEIS else 0
                         new_resp_sel = col_e2.selectbox("Alterar Responsável (Lista)", RESPONSAVEIS, index=idx_resp)
                         
                         new_km = col_e3.number_input("Ajustar KM Atual do Painel", value=int(dados["KM Atual"]), min_value=0, step=1)
                         
-                        # Permite corrigir o nome para qualquer valor digitado ou inserir um novo funcionário diretamente
+                        # Permite modificar e digitar qualquer nome manualmente na edição também
                         new_resp_txt = st.text_input("Ou digite um Novo Funcionário / Ajuste o Nome Manualmente", value=resp_atual if resp_atual not in RESPONSAVEIS else "", placeholder="Deixe em branco para manter a seleção da lista acima...").strip()
                         new_resp = new_resp_txt if new_resp_txt else new_resp_sel
                         
